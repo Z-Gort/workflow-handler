@@ -1,0 +1,157 @@
+Take Home Assessment
+This guide will get you up to speed quickly for your take home assessment.
+Overview
+The take home assessment is intended to evaluate your technical ability, execution speed,
+and practicality.
+Avoid asking anyone outside of the ThirdLayer team for help. You may use AI IDEs to help
+you build faster, but be careful of messy AI generated code. These tasks are meant for you
+to showcase your abilities to break a complex task down and engineer solutions to an open
+ended problem.
+Task
+Submission guidelines
+1. Please create a Github repository for the project outlined below and share it with
+@kevinrgu
+2. Record a quick demo of your project and upload to Google Drive/Loom/Youtube.
+3. Submit your project via this Google Form: https://forms.gle/APXUNd5YYjygFQa99
+a. It will ask you for the number of hours you spent on the take home, a link to
+the repository, and a link to the video demo.
+Repository: https://github.com/kevinrgu/workflow-worktrial
+Objective
+Implement a system that periodically processes a time-ordered sequence of browser
+events (clicks, key presses, tab switches, page loads, etc.) plus a catalog of available
+integrations & tool calls (e.g., google_sheets-add-rows, hubspot-add-contact). From this
+input, the system should:
+- Segment the sequence into candidate workflows.
+- Generalize workflows so they are not instance-bound (e.g., “add to a sheet” vs a
+specific sheet ID).
+- Denoise (ignore accidental clicks, micro-navigation noise).
+- Group/deduplicate similar workflows.
+- Filter out workflows that cannot be executed with the provided tool catalog.
+- Store the resulting workflows and their step sequences in a database or file.
+Inputs
+1. A sequence of browser interactions. Note that the page-load event will include the
+markdown version of the webpage. This might be quite long for some webpages, so
+will likely need a processing step for another LLM to summarize what’s on the page
+etc rather than feeding it directly for processing. Also consider the fact that users
+will likely switch between tabs. This sequence should span the time of n>= 1 hour, so
+workflows will be generated every n hours (i.e CRON), with n hours worth of
+interactions (a lot!)
+Example input sequence:
+2. A list of integrations & tools. Note that the input schema will also be provided etc,
+but you can choose what to feed into the LLM/system from this list, since it can be
+quite verbose.
+{"name":"gmail-find-email","label":"Find Email","description":"Find an email using Google's
+Search Engine. [See the
+docs](https://developers.google.com/gmail/api/reference/rest/v1/users.messages/list)","inpu
+tSchema":{"jsonSchema":{"type":"object","properties":{"q":{"type":"string","description":"Apply a
+search filter usi…}
+{"name":"gmail-create-draft","label":"Create Draft","description":"Create a draft from your
+Google Workspace email account. [See the
+documentation](https://developers.google.com/gmail/api/reference/rest/v1/users.drafts/cre
+ate)","inputSchema":{"jsonSchema":{"type":"object","properties":{"to":{"type":"array",...}
+Output
+- A set of generalized workflows, each with a natural-language summary and an
+ordered list of steps that reference browser context and/or tool calls.
+- Group near-duplicates; exclude workflows not realizable with the provided tools.
+Frameworks & Tools
+We’ve built a very minimal browser extension for interaction logging, where you can send
+interactions to your own route (FastAPI, NextJS, whatever you choose). You can use it to
+simulate some user browsing trajectories to create your own testing dataset to generate
+workflows, though note that in production, the data will likely be extremely noisy and
+contain many irrelevant/noisy/unintentional interactions. You can also use it to test it live as
+you use your browser throughout the day and see if your code generates meaningful
+activity. Note that in the code, you can configure the number of events to send. Read the
+README file to look at code structure and feel free to modify it as needed.
+Click ‘Send [#] interactions’ for it to hit your endpoint:
+Example Workflows
+- “Review a profile on a professional network → add the person’s details to a Google
+Sheet → log or create a CRM contact.”
+- “Read a help/support page → synthesize a short summary → append to a Notion
+database.”
+- “Open a gmail thread, see that a user requests a meeting” → “Check my calendar for
+availability” → “Respond to gmail letting them know my availability”
+Core challenges to solve
+- Segmentation: Find contiguous spans that constitute a workflow vs. noise. Use the
+fact that browsing is linear and sequential, so you can know that any unit of a
+workflow is some contiguous sequence of events
+- Feasibility: Ensure each workflow can be executed using only the supplied tool
+catalog.
+- Deduplication: Group structurally similar workflows and keep a representative.
+- How to encode workflows and metadata so you can retrieve similar workflows for
+deduplication
+- Which parts of the core algorithm you should delegate to an LLM
+Some ideas
+You should decide the workflow schema, but here is an example (can extend it, this is just a
+barebones example
+{
+"summary": "Capture details from a viewed LinkedIn profile, add to a sheet, then log/create
+CRM contact.",
+"steps": [
+{
+"description": "Look at the current LinkedIn profile and get their name, most recent
+companies, and education.",
+"type": "browser_context"
+},
+{
+"description": "Add details to the Google Sheet, and draft a personalized message to
+them.",
+"type": "tool",
+"tools": ["google_sheets-add-rows"]
+},
+{
+"description": "Log interaction to HubSpot for their contact; create a new contact if one
+does not exist.",
+"type": "tool",
+"tools": ["hubspot-search", "hubspot-add-contact"]
+}
+]
+}
+Hierarchical segmentation
+- The most meaningful unit without being too granular is often the page-level
+interaction.
+- Within a page there can be lots of noisy micro-events; at the page level the user’s
+intent is clearer.
+- One approach: first summarize/label each page session (URL + viewport + short
+activity summary), then feed these page-level summaries into a second pass that
+segments into workflows.
+Sequential/online approach
+- Treat the event stream e0, e1, … as an online sequence.
+- Run a while-loop that grows a window until e0..en is judged a workflow (or noise);
+emit it, advance, and continue until the stream is exhausted.
+Denoising
+- Preprocess via summarizing larger user intents to collapse contiguous trivial events
+(e.g., rapid clicks on the same selector, accidental focus/blur, transient tab switches).
+- Keep short “view summaries” per page (title, URL, viewport, dwell time) to help an
+LLM or rules decide relevance.
+Controlling false positives
+- LLMs tend to output many false positives (eg, what’s considered a workflow).
+Counter with strict prompts, guardrails (must map to available tools), etc, and please
+validate the outputs of your pipeline
+Retrieval & grouping
+- Can use metadata (domain, URL patterns, tool sequences) and optionally
+embeddings over summaries to cluster similar workflows.
+- Choose a representative; if a new candidate workflow is “close enough” in some form
+you measure, treat it as a duplicate.
+Deliverables
+- Code repo: an endpoint route in any language/framework you choose. Code should
+be organized and reasonably modular
+- You can choose to include a DB or output your workflows to a file.
+- Note that your route is expected to be hit routinely every n >= 1 hours like a
+CRON job with the past n hours worth of interactions, and that new workflows
+generated should be de-duped with existing historical/previous workflows in
+your DB
+- Video Demo: Walk through your code, show some examples, and highlight your
+design decisions and thinking process, what worked vs what didn’t
+- Some architecture description in the README
+What We’ll Look For
+This is a challenging task, and we recognize this. Make as much progress as you can and let
+us know what you end up completing. Here is what we’re looking for:
+- A clear data model and pipeline that reflects the sequential, hierarchical nature of
+browsing.
+- Reasonable choices for segmentation, generalization, denoising, and dedup, etc. Be
+practical! Real data/prod is very noisy and it should be robust. Heuristics in general
+are useful, but be careful about building a system that’s too rigid.
+- Clean code
+- If you have extra ideas/directions that you didn’t get to, we would love to hear your
+thought process, reasoning, and considerations
+Ping us if you have questions!
