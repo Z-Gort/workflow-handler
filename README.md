@@ -1,29 +1,61 @@
-# Create T3 App
+### 1. Frontend Web Application
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+- **Technology**: Next.js with TypeScript
+- **Database**: PostgreSQL with Drizzle ORM
+- **API**: RESTful endpoints for browser interaction ingestion
+- **Location**: `src/app/`, `src/server/db/`
 
-## What's next? How do I make an app with this?
+### 2. Python Workflow Processing Pipeline
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+- **Location**: `src/server/python/`
+- **Main File**: `group_flows.py`
+- **Dependencies**: Claude AI API, psycopg2, anthropic
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+#### Processing Stages:
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+1. **Event Grouping** → **Tab Session Summaries**
+   - Groups browser events by URL and tab context
+   - Creates `TabSessionSummary` objects with viewport and activity summaries
+   - Uses AI to summarize page content and user behavior
 
-## Learn More
+2. **Workflow Detection** → **AI Classification**
+   - Applies expanding window algorithm to detect workflow boundaries
+   - AI classifies sequences as: `WORKFLOW`, `NOISE`, or `UNFINISHED`
+   - Strict criteria: must show purposeful progression toward actionable goals
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+3. **Tool Analysis** → **Step Classification**
+   - Scans workflow steps for platform keywords (Slack, Jira, Notion, etc.)
+   - Uses AI to map specific steps to available tools from `tools-dump/`
+   - Classifies steps as `tool` or `browser_context`
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+4. **Deduplication** → **Database Storage**
+   - Compares tool sets to identify duplicate workflows
+   - Stores unique workflows in PostgreSQL
+   - Maintains workflow metadata and step sequences
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+### 3. Database Schema
 
-## How do I deploy this?
+```sql
+-- PostgreSQL table: workflow-handler_workflow
+CREATE TABLE "workflow-handler_workflow" (
+  id SERIAL PRIMARY KEY,
+  summary TEXT NOT NULL,
+  steps JSONB NOT NULL,  -- Array of workflow steps with tools
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+```
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+### 4. Tool Integration System
+
+- **Tool Definitions**: `src/server/python/tools-dump/`
+- **Supported Platforms**: Slack, Jira, Linear, Notion, HubSpot, Google Workspace, GitHub, Discord, Microsoft Office
+- **Format**: JSON tool definitions with names, descriptions, and input schemas
+
+## Data Flow
+
+1. **Browser Events** → Captured by browser extension
+2. **API Ingestion** → `/api/interactions` endpoint receives event batches
+3. **Python Processing** → `group_flows.py` processes events through pipeline
+4. **AI Analysis** → Claude AI models classify workflows and map tools
+5. **Database Storage** → Curated workflows stored with deduplication
+6. **Automation Ready** → Workflows available for automation platforms

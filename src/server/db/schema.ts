@@ -12,16 +12,16 @@ import { index, pgTableCreator } from "drizzle-orm/pg-core";
  */
 export const createTable = pgTableCreator((name) => `workflow-handler_${name}`);
 
-export const posts = createTable(
-  "post",
+export const workflows = createTable(
+  "workflow",
   (d) => ({
     id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
-    name: d.varchar({ length: 256 }),
+    summary: d.text().notNull(),
+    steps: d.jsonb().notNull(),
     createdAt: d
       .timestamp({ withTimezone: true })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
-    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
   }),
-  (t) => [index("name_idx").on(t.name)],
+  (t) => [index("summary_idx").on(t.summary)],
 );
